@@ -1,0 +1,362 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title> 拖动</title>
+</head>
+<style type="text/css">
+ html,body{margin:0; padding:0;} 
+ body{height:2000px; }
+body{/* position: relative;*/}
+ h1{text-align: center;}  
+ #dragArea { height:800px ; width:800px; position: relative; background: #F2ECCA; border:1px solid #ccc; margin-top:120px;
+  margin-left: 300px;}
+   #box1{   background: #3E78FD; /* margin-top:100px; margin-left:100px;*/
+   border:3px solid #F8570A;    position: absolute; top:0; left:0;   border-radius: 6px;
+  /* overflow: hidden;*/   width: 192px; /*margin:20px;*/ z-index: 1 ;  }
+   #box1 h3{     height: 30px; background: #F2ECCA;color:#333 ; margin:0; padding:0; cursor:move;
+     font: bold 14px/1.5em Arial ,"microsoft YaHei" ; text-indent: 10px;  
+     /*margin-top:100px;*/
+     }
+   #box1 img{ display: block;}
+
+    #box2{   background: #3E78FD; /* margin-top:100px; margin-left:100px;*/
+   border:3px solid #F8570A;   z-index: 1 ;    position: absolute; top:0; left:400px;   border-radius: 6px;
+  /* overflow: hidden;*/   width: 192px;  }
+   #box2 h3{     height: 30px; background: #F2ECCA;color:#333 ; margin:0; padding:0; cursor:move;
+     font: bold 14px/1.5em Arial ,"microsoft YaHei" ; text-indent: 10px;  
+     margin-top:100px;
+     }
+   #box2 img{ display: block; }
+
+   #dropBox{ width:300px; height: 300px; position:absolute; top:100px; right:0;  z-index: 0;}
+   .green{ background: #6AA114; /*绿色*/}
+   .blue{ background: #3E78FD; /*蓝色*/}
+   .red{ background: #DB0D00; /*红色*/}
+
+
+   .moving{ opacity:0.4; filter:alpha(opacity=40);}
+</style>
+ <script type="text/javascript" src="lw-core.js" content="charset=utf-8"> </script>
+<script type="text/javascript">
+(function (){
+
+
+function Drag(args){
+      //{ oDrag  ,  // 拖动对象 
+     //  oHander , //拖动手柄
+     //  moveClass ,// 拖动时的类 
+     //oRange  // 拖动范围对象，若不提供，则为documentElement
+     //mode   // 可选  mode == "v"  垂直拖动;  mode = "H" 水平拖动
+     //ondragStart  //开始拖拽事件函数
+     //onMove     // 正在运动事件函数
+     //onDrop   //投放函数
+     //}
+    
+   this.mistakeX = args.mistakeX || 0  ;
+   this.mistakeY = args.mistakeY || 0  ;
+   //   误差参数 ，在复杂布局和复杂动画中可能存在x,y方向的误差纠错参数，默认为0
+
+
+    this.defaultArgs={
+     oHander:{
+          valueOf:function ($this) {
+            return $this.originalArgs.oDrag;
+          }
+        },
+    oRange:{
+          valueOf:function () {
+            return document.documentElement;
+          }
+        } 
+      };
+     this.init(args); //初始化参数     
+ var $this = this ; 
+   
+ // alert("minX: "+ this.range.minX + " | mixY: " +this.range.minY + "| maxX:" + this.range.maxX + "| maxY:"+ this.range.maxY   );
+
+
+     this.onmousedownHandle =function(evt){
+        fixEvent(evt);
+        evt.preventDefault();
+        addClass($this.oDrag,$this.moveClass);
+        $this.startDrag(evt);
+  } 
+  bind(this.oHander,"mousedown",this.onmousedownHandle);
+}
+
+
+
+Drag.prototype = { 
+
+  init:function (args) {  //初始化参数
+    this.originalArgs=args;
+    for (var i in args) {
+      this[i]=args[i];
+    }
+    for (i in this.defaultArgs) {
+      if (args[i]===undefined)
+        this[i]=this.defaultArgs[i].valueOf(this);
+    }
+    
+  },
+   startDrag: function(evt){
+    var returnResult ;
+    fixEvent(evt,this.oDrag);
+    evt.preventDefault();
+    if(this.onDragStart){    //自定义事件
+      returnResult = this.onDragStart(evt,this);  //evt是事件对象，this指的是Drag实例
+    }
+     if(returnResult===false){
+        // delClass(this.oDrag,this.moveClass);
+        return false ;
+     }
+     var $this = this ;   
+
+     var ml=parseInt(getRealStyle($this.oDrag,"marginLeft")) || 0,
+       mr=parseInt(getRealStyle($this.oDrag,"marginRight")) ||  0,
+       mt=parseInt(getRealStyle($this.oDrag,"marginTop"))   ||  0 ,
+       mb=parseInt(getRealStyle($this.oDrag,"marginBottom")) || 0 ;
+ 
+      this.range = {       //默认范围是window
+                  minX: 0,  //x偏移
+                  minY: 0,  //  y偏移
+                  maxX: $this.oRange.clientWidth + $this.oRange.scrollLeft  -$this.oDrag.offsetWidth-ml-mr,  //X方向最大left偏移
+                  maxY: $this.oRange.clientHeight+ $this.oRange.scrollTop  -$this.oDrag.offsetHeight-mt-mb  //y方向最大top偏移
+           } ;
+
+   if($this.oRange !=  document.documentElement && $this.oRange.nodeType=="1"){  //是否有指定的限定范围元素，且不是定位
+    var offset = getOffset($this.oRange); 
+     var isPosition = ( getRealStyle(this.oRange,"position")=="relative"||getRealStyle(this.oRange,"position")=="absolute"),
+        isContain = isParent(this.oDrag,this.oRange);
+    // 1  oRange 包含 oDrag   但  oRange 不定位 
+    // 2  oRange 包含 oDrag   但  oRange 定位 
+    // 3  oRange 不包含 oDrag   仅是设定范围的dom元素
+     this.range = {
+            minX:offset.x,  //页面$this.oRange的x坐标
+            minY:offset.y,  ////页面$this.oRange的y坐标
+            maxX:offset.x+$this.oRange.clientWidth+$this.oRange.clientLeft-$this.oDrag.offsetWidth-ml-mr, 
+             //x方向left变换范围
+            maxY:offset.y+$this.oRange.clientHeight+$this.oRange.clientTop-$this.oDrag.offsetHeight-mt-mb 
+             //y方向的top变化范围
+    } ;
+   
+    if(isPosition &&  isContain){ // 是子元素  且oRange定位        
+      this.range={
+         minX: 0 ,
+         minY: 0 ,
+         maxX  :  $this.oRange.clientWidth+$this.oRange.clientLeft-$this.oDrag.offsetWidth-ml-mr,
+         maxY  : $this.oRange.clientHeight+$this.oRange.clientTop-$this.oDrag.offsetHeight-mt-mb    
+
+      }
+        
+    } 
+
+  }
+  // ============================
+    this.layer = {  //鼠标相对于拖动层的偏移，而不是拖动手柄的偏移
+      x : evt.layerX ,
+      y : evt.layerY 
+    } ;
+    
+
+
+  this.onmousemoveHandle = function(evt){
+    fixEvent(evt) ; 
+    evt.preventDefault();
+    $this.move(evt);
+
+  };
+   this.onmouseupHandle=function(evt){
+            fixEvent(evt);        
+            evt.preventDefault();
+            $this.stopDrag(evt);
+         };
+ 
+
+  bind(document,"mousemove",this.onmousemoveHandle);
+  bind(document,"mouseup",this.onmouseupHandle);  
+  bind(window,"blur",this.mouseupHandle); //防止切换窗口时，mouseup事件未被捕获到！
+
+
+    if(document.selection&&document.selection.empty){  //主动消除文字选中带来的诡异
+        document.selection.empty() ;   //ie 
+    }
+    else if (window.getSelection){
+      window.getSelection().removeAllRanges() ; //firefox 
+    }
+     if ( this.oDrag.setCaputer){   // for ie  当拖出窗口仍旧能触发 onmousedown事件 
+       this.oDrag.setCaputer(true);   
+     }
+ bind(this.oDrag,"dragstart",function(evt){
+          fixEvent(evt);
+          evt.preventDefault();
+     });
+
+   },
+   move: function(evt){ //运动
+    var parentPos,returnResult ;  
+
+    if(this.onMove){    //自定义事件
+      returnResult = this.onMove(evt,this);  //evt是事件对象，this指的是Drag实例
+    }
+    if(returnResult===false){  //如果onMove执行的函数返回是false
+        this.stopDrag(evt);
+        return false ;
+     }
+
+     if( getRealStyle(this.oDrag.offsetParent,"position")=="relative"||getRealStyle(this.oDrag.offsetParent,"position")=="absolute"){
+          parentPos = getOffset(this.oDrag.offsetParent )||{x:0,y:0};
+      }
+      else{
+           parentPos =  {x:0,y:0};
+      }
+
+         var x= evt.pageX - this.layer.x - parentPos.x -this.mistakeX - (parseInt(getRealStyle(this.oDrag,'marginLeft') )||0) ,  
+             //在设置margin的 情况下则要减去 margin ,
+            y =evt.pageY - this.layer.y -parentPos.y- this.mistakeY- (parseInt(getRealStyle(this.oDrag ,'marginTop')) ||0);
+             // window.status="x:"+x+"y:"+y ;
+
+
+            // 为防止 ie 8及以下 没有设置 margin的 情况下  getRealStyle 得到的margin为auto ，parseInt后得到的值为NaN
+      var de =document.documentElement ;
+
+        x=Math.max(x,this.range.minX);
+        x=Math.min(x,this.range.maxX);
+        y=Math.max(y,this.range.minY);
+        y=Math.min(y,this.range.maxY);
+        // document.title= x+"|"+ y ;
+
+        if(this.mode=="H" || !this.mode){  //mode == H  表示只水平拖动 
+      this.oDrag.style.left=x+"px";          
+        }
+    
+    if (this.mode=="V" || !this.mode){  // mode == V  表示只垂直拖动 
+      this.oDrag.style.top=y +"px";
+
+    }
+ 
+
+   },
+   stopDrag:function(evt){ //停止拖动
+     unbind(document,"mousemove", this.onmousemoveHandle);
+     unbind(document,"mouseup",this.onmouseupHandle);
+      delClass(this.oDrag , this.moveClass) ; 
+      if(this.oDrag.releaseCapture){
+        this.oDrag.releaseCapture(true);
+      }
+      if (this.onDrop)   {  //自定义事件
+         this.onDrop(this);  //this 是oDrag 实例
+      }
+   },
+   disable: function () {//禁用拖动
+    this.stopDrag();
+    unbind(this.oHander,"mousedown",this.onmousedownHandle);
+  },
+  enable:function () {//启用拖动
+    var $this=this;
+    this.mousedownHandle=function (evt) {
+      $this.startDrag(evt);
+    };
+    bind(this.oHander,"mousedown",this.onmousedownHandle);
+  }
+ }
+
+    
+     addEvent(window,"load",function(){
+      var oBox1 = $('box1');
+      var oImg = oBox1.getElementsByTagName('img')[0];
+      var oH3= oBox1.getElementsByTagName('h3')[0];
+
+       var oBox2 = $('box2');
+
+      var oImg2 = oBox2.getElementsByTagName('img')[0];
+      var oH32= oBox2.getElementsByTagName('h3')[0];
+
+     var dropBox = $("dropBox");
+     var dropBoxOffset = getOffset(dropBox);
+      var drag =new Drag({
+         oDrag:oBox1,   //拖拽对象
+         oHander:oH3,   //拖拽手柄
+         moveClass:'moving', //拖拽时的样式
+         oRange: $("dragArea"),  //拖拽时的dom元素范围限定对象   
+         onDragStart:function(evt,drag){ // 自定义事件onDragStart  开始拖动
+          document.title= "开始拖拽！";
+          // return false ;
+         },
+         onMove:function(evt,drag){   // 自定义事件onDragStart   正在拖动
+          document.title = "正在拖拽";
+          delClass(dropBox,"blue");
+          var oDragOffset = getOffset(drag.oDrag) ;
+          var isInner = (     (oDragOffset.x >= dropBoxOffset.x) && (oDragOffset.x  + drag.oDrag.offsetWidth <= dropBoxOffset.x +dropBox.clientWidth)    ) && (   (oDragOffset.y >= dropBoxOffset.y)  && (oDragOffset.y  + drag.oDrag.offsetHeight <=dropBoxOffset.y +dropBox.clientHeight)   )  ; 
+          //  alert(isInner);
+           if (isInner){
+              addClass(dropBox,"blue");
+              // drag.oDrag.style.left = "0px" ; 
+              // drag.oDrag.style.top = "0px" ; 
+                          
+
+           }
+
+
+         },
+         onDrop: function(){
+          document.title = "结束拖拽";
+          var oDragOffset = getOffset(drag.oDrag) ;
+          var isInner = (     (oDragOffset.x >= dropBoxOffset.x) && (oDragOffset.x  + drag.oDrag.offsetWidth <= dropBoxOffset.x +dropBox.clientWidth)    ) && (     (oDragOffset.y >= dropBoxOffset.y)  && (oDragOffset.y  + drag.oDrag.offsetHeight <=dropBoxOffset.y +dropBox.clientHeight)   )  ;
+          if(isInner){
+          drag.oRange = dropBox ;
+          dropBox.appendChild(drag.oDrag);
+          addClass(dropBox,"red");
+          drag.oDrag.style.left = "20px" ; 
+           drag.oDrag.style.top = "20px" ; 
+          }
+
+         }
+         // mode: "V"   // 垂直
+        }) ; 
+
+     // d.disable();  //可以禁用
+     
+
+
+
+      var d2 =new Drag({
+        oDrag:oBox2,
+        oHander:oH32,
+        moveClass:'moving' 
+        // oRange :$("dragArea")
+        // mode : "H"   //水平
+
+        }) ;   
+     
+     });
+
+ 
+
+ })();  
+</script>
+
+<body>
+  <h1>drag</h1>
+  <div id="dragArea">
+    
+
+    <div id ="box1" class="">
+    <h3>我是拖拽手柄</h3>
+    <img src="1.jpg" alt="1" />
+    </div>
+
+  
+
+<div id="dropBox" class="green">
+  快来投靠我！
+</div>
+  </div>
+  <div id ="box2" class="">
+    <h3>我是拖拽手柄</h3>
+    <img src="1.jpg" alt="1" />
+ </div>
+
+</body>
+</html>
